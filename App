@@ -1,0 +1,378 @@
+package com.mycompany.knighttravail;
+
+import javafx.application.Application;
+import javafx.geometry.Insets;
+import javafx.geometry.Pos;
+import javafx.scene.Scene;
+import javafx.scene.control.Button;
+import javafx.scene.control.Label;
+import javafx.scene.control.TextArea;
+import javafx.scene.control.TextField;
+import javafx.scene.layout.*;
+import javafx.scene.text.Font;
+import javafx.stage.Stage;
+import java.util.*;
+
+public class App extends Application {
+
+    private VBox inputBox;
+
+    public static void main(String[] args) {
+        launch(args);
+    }
+
+    @Override
+    public void start(Stage primaryStage) {
+        Board board = new Board();
+        primaryStage.setTitle("Knight's Tour");
+
+        BorderPane root = new BorderPane();
+        root.setPadding(new Insets(10));
+
+        // Chess board display
+        GridPane chessBoard = createChessBoard(board);
+        root.setCenter(chessBoard);
+
+        // Input fields and buttons
+        inputBox = createInputBox(board);
+        root.setBottom(inputBox);
+
+        // Text area to display solutions
+        TextArea solutionArea = new TextArea();
+        solutionArea.setEditable(false);
+        solutionArea.setWrapText(true);
+        solutionArea.setPrefHeight(400); // Set the preferred height
+        root.setRight(solutionArea);
+
+        Scene scene = new Scene(root, 550, 600); // Adjust scene size
+        primaryStage.setScene(scene);
+        primaryStage.show();
+    }
+
+    private GridPane createChessBoard(Board board) {
+        GridPane chessBoard = new GridPane();
+        chessBoard.setAlignment(Pos.CENTER);
+        chessBoard.setHgap(2);
+        chessBoard.setVgap(2);
+
+        for (int y = 1; y <= 8; y++) {
+            for (int x = 1; x <= 8; x++) {
+                Pane square = createSquare(board.getSquare(x, y));
+                chessBoard.add(square, x - 1, y - 1);
+            }
+        }
+
+        return chessBoard;
+    }
+
+    private Pane createSquare(Square boardSquare) {
+        Pane square = new Pane();
+        square.setPrefSize(50, 50);
+
+        Label label = new Label();
+        label.setFont(Font.font(20));
+        label.setPadding(new Insets(5));
+
+        if (!boardSquare.getPiece().isBlank()) {
+            label.setText(boardSquare.getPiece().toChessNotation());
+        } else {
+            label.setText("");
+        }
+
+        square.getChildren().add(label);
+        return square;
+    }
+
+    private VBox createInputBox(Board board) {
+        VBox inputBox = new VBox(10);
+        inputBox.setAlignment(Pos.CENTER);
+
+        Label instructionLabel = new Label("Enter Move (e.g., A8 B7):");
+        TextField moveField = new TextField();
+        moveField.setPrefWidth(200);
+        Button moveButton = new Button("Submit");
+
+        moveButton.setOnAction(e -> {
+            String moveInput = moveField.getText();
+            if (moveInput != null && !moveInput.isEmpty()) {
+                try {
+                    Move move = new Move(moveInput, board);
+                    move.getSource().setPiece(new Knight());
+                    LinkedList<LinkedList<Square>> solutions = board.getKnightTravailsSolutions(move);
+                    displaySolutions(board, solutions);
+                } catch (IllegalArgumentException ex) {
+                    System.out.println("ERROR: " + ex.getMessage());
+                }
+            }
+        });
+
+        inputBox.getChildren().addAll(instructionLabel, moveField, moveButton);
+        return inputBox;
+    }
+
+    private void displaySolutions(Board board, LinkedList<LinkedList<Square>> solutions) {
+        if (solutions.isEmpty()) {
+            System.out.println("No solution exists.");
+        } else {
+            StringBuilder solutionText = new StringBuilder();
+            for (LinkedList<Square> solution : solutions) {
+                solutionText.append(board.getBoardLine(solution)).append("\n");
+                solutionText.append("Solution: ").append(board.getSolutionLine(solution)).append("\n\n");
+            }
+            TextArea solutionArea = (TextArea) ((BorderPane) inputBox.getParent()).getRight();
+            solutionArea.setText(solutionText.toString());
+        }
+    }
+
+    class Board {
+        private final int BOARD_WIDTH = 8;
+        private final int BOARD_HEIGHT = 8;
+        private List<Square> squares = new LinkedList<>();
+
+        public Board() {
+            this.build();
+        }
+
+        private void build() {
+            this.squares.clear();
+            for (int y = 1; y <= BOARD_HEIGHT; y++) {
+                for (int x = 1; x <= BOARD_WIDTH; x++) {
+                    this.squares.add(new Square(x, y, new Blank()));
+                }
+            }
+        }
+
+        public Square getSquare(int x, int y) {
+            for (Square square: squares) {
+                if (square.matches(x, y)) return square;
+            }
+            return null;
+        }
+
+        public LinkedList<LinkedList<Square>> getKnightTravailsSolutions(Move move) {
+            LinkedList<LinkedList<Square>> solutions = new LinkedList<>();
+            Queue<TreeNode> queue = new LinkedList<>();
+            Set<Square> visited = new HashSet<>();
+
+            TreeNode root = new TreeNode(move.getSource());
+            queue.add(root);
+
+            while (!queue.isEmpty()) {
+                TreeNode currentNode = queue.poll();
+                Square currentSquare = currentNode.square;
+
+                if (currentSquare.equals(move.getDestination())) {
+                    solutions.add(constructPath(currentNode));
+                }
+
+                if (!visited.contains(currentSquare)) {
+                    visited.add(currentSquare);
+                    for (Square nextLegalSquare : this.getKnightNextLegalMoves(currentSquare)) {
+                        if (!visited.contains(nextLegalSquare)) {
+                            TreeNode childNode = new TreeNode(nextLegalSquare);
+                            currentNode.addChild(childNode);
+                            queue.add(childNode);
+                        }
+                    }
+                }
+            }
+            return solutions;
+        }
+
+        private LinkedList<Square> constructPath(TreeNode node) {
+            LinkedList<Square> path = new LinkedList<>();
+            while (node != null) {
+                path.addFirst(node.square);
+                node = node.parent;
+            }
+            return path;
+        }
+
+        private List<Square> getKnightNextLegalMoves(Square source) {
+            List<Square> nextMoves = new LinkedList<>();
+            for (Square destination: squares) {
+                int xMoveDistance = destination.getX() - source.getX();
+                int yMoveDistance = destination.getY() - source.getY();
+
+                if ((destination.getPiece().isBlank()) && (Math.abs(xMoveDistance * yMoveDistance) == 2)) {
+                    nextMoves.add(destination);
+                }
+            }
+            return nextMoves;
+        }
+
+        public String getBoardLine(LinkedList<Square> solution) {
+            StringBuilder line = new StringBuilder("\n");
+            line.append(getBoardTopLine()).append("\n");
+            line.append(getBoardMiddleLine()).append("\n");
+            for (int y = 1; y <= BOARD_HEIGHT; y++) {
+                for (int x = 1; x <= BOARD_WIDTH; x++) {
+                    Square square = this.getSquare(x, y);
+                    if (!square.getPiece().isBlank()) {
+                        line.append("   |   ").append(square.getPiece().toChessNotation());
+                    } else if (solution.contains(square)) {
+                        line.append("   |   ").append(solution.indexOf(square));
+                    } else {
+                        line.append("   |   ").append(square.getPiece().toChessNotation());
+                    }
+                }
+                line.append("   |   ").append(y).append("\n");
+                line.append(getBoardMiddleLine()).append("\n");
+            }
+            return line.toString();
+        }
+
+        private String getBoardMiddleLine() {
+            StringBuilder line = new StringBuilder(" ");
+            for (int i = 0; i < BOARD_WIDTH; i++) {
+                line.append("+----");
+            }
+            line.append("");
+            return line.toString();
+        }
+
+        private String getBoardTopLine() {
+            StringBuilder line = new StringBuilder(" ");
+            char startChar = 'a';
+            for (int i = 0; i < BOARD_WIDTH; i++) {
+                line.append("     ").append(startChar).append(" ");
+                startChar++;
+            }
+            return line.toString();
+        }
+
+        public String getSolutionLine(LinkedList<Square> solution) {
+            StringBuilder line = new StringBuilder();
+            if (solution.getFirst() == solution.getLast()) {
+                line.append("No travel required");
+            } else {
+                for (Square square: solution) {
+                    if (square != solution.getFirst()) line.append(square.toChessNotation()).append(" ");
+                }
+            }
+            return line.toString();
+        }
+    }
+
+    class TreeNode {
+        Square square;
+        TreeNode parent;
+        List<TreeNode> children;
+
+        public TreeNode(Square square) {
+            this.square = square;
+            this.children = new LinkedList<>();
+        }
+
+        public void addChild(TreeNode child) {
+            child.parent = this;
+            this.children.add(child);
+        }
+    }
+
+    class Move {
+        private Square source, destination;
+
+        public Move(String moveInput, Board board) {
+            if (moveInput == null || moveInput.length() != 5 || moveInput.charAt(2) != ' ') {
+                throw new IllegalArgumentException("Invalid input.");
+            }
+
+            int fromX = (int)moveInput.toUpperCase().charAt(0) - '@';
+            int fromY = (int)moveInput.toUpperCase().charAt(1) - '0';
+            int toX = (int)moveInput.toUpperCase().charAt(3) - '@';
+            int toY = (int)moveInput.toUpperCase().charAt(4) - '0';
+
+            if ((board.getSquare(fromX, fromY) == null) || (board.getSquare(toX, toY)) == null) {
+                throw new IllegalArgumentException("Invalid input.");
+            }
+
+            this.source = board.getSquare(fromX, fromY);
+            this.destination = board.getSquare(toX, toY);
+        }
+
+        public Square getSource() { return this.source; }
+
+        public Square getDestination() { return this.destination; }
+    }
+
+    class Square {
+        private int x, y;
+        private Piece piece;
+
+        public Square(int x, int y, Piece piece) {
+            this.x = x;
+            this.y = y;
+            this.piece = piece;
+        }
+
+        public int getX() { return this.x; }
+
+        public int getY() { return this.y; }
+
+        public Piece getPiece() { return this.piece; }
+
+        public void setPiece(Piece piece) { this.piece = piece; }
+
+        public String toChessNotation() {
+            return (char)(this.x + 64) + "" + (this.y);
+        }
+
+        public boolean matches(int x, int y) {
+            return (this.x == x && this.y == y);
+        }
+
+        @Override
+        public int hashCode() {
+            return Objects.hash(x, y);
+        }
+
+        @Override
+        public boolean equals(Object obj) {
+            if (this == obj) return true;
+            if (obj == null || getClass() != obj.getClass()) return false;
+            Square square = (Square) obj;
+            return x == square.x && y == square.y;
+        }
+    }
+
+    abstract class Piece {
+        public Piece() {}
+
+        public abstract PieceType getPieceType();
+
+        public abstract String toChessNotation();
+
+        public boolean isKnight() {
+            return getPieceType() == PieceType.KNIGHT;
+        }
+
+        public boolean isBlank() {
+            return getPieceType() == PieceType.BLANK;
+        }
+    }
+
+    enum PieceType {
+        KNIGHT, BLANK;
+    }
+
+    class Blank extends Piece {
+        public PieceType getPieceType() {
+            return PieceType.BLANK;
+        }
+
+        public String toChessNotation() {
+            return " ";
+        }
+    }
+
+    class Knight extends Piece {
+        public PieceType getPieceType() {
+            return PieceType.KNIGHT;
+        }
+
+        public String toChessNotation() {
+            return "S";
+        }
+    }
+}
